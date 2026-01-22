@@ -1,0 +1,854 @@
+/*
+ * OpenSSL API (EVP PKEY) - Harbour interface.
+ *
+ * Copyright 2009 Viktor Szakats (vszakats.net/harbour)
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; see the file LICENSE.txt.  If not, write to
+ * the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ * Boston, MA 02110-1301 USA (or visit https://www.gnu.org/licenses/).
+ *
+ * As a special exception, the Harbour Project gives permission for
+ * additional uses of the text contained in its release of Harbour.
+ *
+ * The exception is that, if you link the Harbour libraries with other
+ * files to produce an executable, this does not by itself cause the
+ * resulting executable to be covered by the GNU General Public License.
+ * Your use of that executable is in no way restricted on account of
+ * linking the Harbour library code into it.
+ *
+ * This exception does not however invalidate any other reasons why
+ * the executable file might be covered by the GNU General Public License.
+ *
+ * This exception applies only to the code released by the Harbour
+ * Project under the name Harbour.  If you copy code from other
+ * Harbour Project or Free Software Foundation releases into a copy of
+ * Harbour, as the General Public License permits, the exception does
+ * not apply to the code that you add in this way.  To avoid misleading
+ * anyone as to the status of such modified files, you must delete
+ * this exception notice from them.
+ *
+ * If you write modifications of your own for Harbour, it is your choice
+ * whether to permit this exception to apply to your modifications.
+ * If you do not wish that, delete this exception notice.
+ *
+ */
+
+#include "hbssl.h"
+
+#include "hbapiitm.h"
+
+#include <openssl/evp.h>
+#include <openssl/rsa.h>
+
+static HB_GARBAGE_FUNC( EVP_PKEY_release )
+{
+   void ** ph = ( void ** ) Cargo;
+
+   /* Check if pointer is not NULL to avoid multiple freeing */
+   if( ph && *ph )
+   {
+      /* Destroy the object */
+      EVP_PKEY_free( ( EVP_PKEY * ) *ph );
+
+      /* set pointer to NULL just in case */
+      *ph = NULL;
+   }
+}
+
+static const HB_GC_FUNCS s_gcEVP_PKEY_funcs =
+{
+   EVP_PKEY_release,
+   hb_gcDummyMark
+};
+
+HB_BOOL hb_EVP_PKEY_is( int iParam )
+{
+   return hb_parptrGC( &s_gcEVP_PKEY_funcs, iParam ) != NULL;
+}
+
+EVP_PKEY * hb_EVP_PKEY_par( int iParam )
+{
+   void ** ph = ( void ** ) hb_parptrGC( &s_gcEVP_PKEY_funcs, iParam );
+
+   return ph ? ( EVP_PKEY * ) *ph : NULL;
+}
+
+EVP_PKEY * hb_EVP_PKEY_get( PHB_ITEM pItem )
+{
+   void ** ph = ( void ** ) hb_itemGetPtrGC( pItem, &s_gcEVP_PKEY_funcs );
+
+   return ph ? ( EVP_PKEY * ) *ph : NULL;
+}
+
+void hb_EVP_PKEY_free( PHB_ITEM pItem )
+{
+   void ** ph = ( void ** ) hb_itemGetPtrGC( pItem, &s_gcEVP_PKEY_funcs );
+
+   if( ph && *ph )
+   {
+      EVP_PKEY_free( ( EVP_PKEY * ) *ph );
+      *ph = NULL;
+   }
+}
+
+void hb_EVP_PKEY_ret( EVP_PKEY * pkey )
+{
+   void ** ph = ( void ** ) hb_gcAllocate( sizeof( EVP_PKEY * ), &s_gcEVP_PKEY_funcs );
+
+   *ph = pkey;
+
+   hb_retptrGC( ph );
+}
+
+static HB_GARBAGE_FUNC( EVP_PKEY_CTX_release )
+{
+   void ** ph = ( void ** ) Cargo;
+
+   /* Check if pointer is not NULL to avoid multiple freeing */
+   if( ph && *ph )
+   {
+#if OPENSSL_VERSION_NUMBER >= 0x10000000L
+      EVP_PKEY_CTX_free( ( EVP_PKEY_CTX * ) *ph );
+#endif
+      /* set pointer to NULL just in case */
+      *ph = NULL;
+   }
+}
+
+static const HB_GC_FUNCS s_gcEVP_PKEY_CTX_funcs =
+{
+   EVP_PKEY_CTX_release,
+   hb_gcDummyMark
+};
+
+#if 0
+static HB_BOOL hb_EVP_PKEY_CTX_is( int iParam )
+{
+   return hb_parptrGC( &s_gcEVP_PKEY_CTX_funcs, iParam ) != NULL;
+}
+#endif
+
+#if OPENSSL_VERSION_NUMBER >= 0x10000000L
+static EVP_PKEY_CTX * hb_EVP_PKEY_CTX_par( int iParam )
+{
+   void ** ph = ( void ** ) hb_parptrGC( &s_gcEVP_PKEY_CTX_funcs, iParam );
+
+   return ph ? ( EVP_PKEY_CTX * ) *ph : NULL;
+}
+
+static void hb_EVP_PKEY_CTX_ret( EVP_PKEY_CTX * pkey )
+{
+   void ** ph = ( void ** ) hb_gcAllocate( sizeof( EVP_PKEY_CTX * ), &s_gcEVP_PKEY_CTX_funcs );
+
+   *ph = pkey;
+
+   hb_retptrGC( ph );
+}
+#endif
+
+HB_FUNC( EVP_PKEY_NEW )
+{
+   hb_EVP_PKEY_ret( EVP_PKEY_new() );
+}
+
+HB_FUNC( EVP_PKEY_TYPE )
+{
+   hb_retni( EVP_PKEY_type( hb_parni( 1 ) ) );
+}
+
+HB_FUNC( EVP_PKEY_BASE_ID )
+{
+   if( hb_EVP_PKEY_is( 1 ) )
+   {
+      EVP_PKEY * pkey = hb_EVP_PKEY_par( 1 );
+
+      if( pkey )
+#if OPENSSL_VERSION_NUMBER >= 0x10000000L
+         hb_retni( EVP_PKEY_base_id( pkey ) );
+#else
+         hb_retni( EVP_PKEY_type( pkey->type ) );
+#endif
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+}
+
+HB_FUNC( EVP_PKEY_SIZE )
+{
+   if( hb_EVP_PKEY_is( 1 ) )
+   {
+      EVP_PKEY * pkey = hb_EVP_PKEY_par( 1 );
+
+      if( pkey )
+         hb_retni( EVP_PKEY_size( pkey ) );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+}
+
+HB_FUNC( EVP_PKEY_BITS )
+{
+   if( hb_EVP_PKEY_is( 1 ) )
+   {
+      EVP_PKEY * pkey = hb_EVP_PKEY_par( 1 );
+
+      if( pkey )
+         hb_retni( EVP_PKEY_bits( pkey ) );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+}
+
+HB_FUNC( EVP_PKEY_ASSIGN )
+{
+   if( hb_EVP_PKEY_is( 1 ) )
+   {
+      EVP_PKEY * pkey = hb_EVP_PKEY_par( 1 );
+
+      if( pkey )
+         /* QUESTION: Is hb_openssl_strdup() okay here? [vszakats] */
+         hb_retni( EVP_PKEY_assign( pkey, hb_parni( 2 ), hb_openssl_strdup( hb_parcx( 3 ) ) ) );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+}
+
+HB_FUNC( EVP_PKEY_ASSIGN_RSA )
+{
+#ifndef OPENSSL_NO_RSA
+   if( hb_EVP_PKEY_is( 1 ) && hb_RSA_is( 2 ) )
+   {
+      EVP_PKEY * pkey = hb_EVP_PKEY_par( 1 );
+      RSA *      key  = hb_RSA_par( 2 );
+      int        res  = 0;
+
+      if( pkey && key )
+      {
+         res = EVP_PKEY_assign_RSA( pkey, key );
+
+         if( res != 0 )
+#if OPENSSL_VERSION_NUMBER >= 0x0090700fL
+            RSA_up_ref( key );
+#else
+            hb_RSA_par_remove( 2 );
+#endif
+      }
+      hb_retni( res );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_ASSIGN_DSA )
+{
+#ifndef OPENSSL_NO_DSA
+   if( hb_EVP_PKEY_is( 1 ) && HB_ISPOINTER( 2 ) )
+   {
+      EVP_PKEY * pkey = hb_EVP_PKEY_par( 1 );
+      DSA *      key  = ( DSA * ) hb_parptr( 2 );
+
+      if( pkey && key )
+         hb_retni( EVP_PKEY_assign_DSA( pkey, key ) );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_ASSIGN_DH )
+{
+#ifndef OPENSSL_NO_DH
+   if( hb_EVP_PKEY_is( 1 ) && HB_ISPOINTER( 2 ) )
+   {
+      EVP_PKEY * pkey = hb_EVP_PKEY_par( 1 );
+      DH *       key  = ( DH * ) hb_parptr( 2 );
+
+      if( pkey && key )
+         hb_retni( EVP_PKEY_assign_DH( pkey, key ) );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_CTX_NEW )
+{
+#if OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY * pkey = hb_EVP_PKEY_par( 1 );
+
+   if( pkey )
+   {
+      hb_EVP_PKEY_CTX_ret( EVP_PKEY_CTX_new( pkey, ( ENGINE * ) hb_parptr( 2 ) ) );
+   }
+   else
+#elif ! defined( OPENSSL_NO_RSA )
+   if( hb_RSA_is( 1 ) )
+   {
+      hb_itemReturn( hb_param( 1, HB_IT_POINTER ) );
+   }
+   else
+#endif
+      hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+}
+
+HB_FUNC( EVP_PKEY_CTX_SET_RSA_PADDING )
+{
+#if ! defined( OPENSSL_NO_RSA ) && OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+
+   if( ctx && HB_ISNUM( 2 ) )
+   {
+      hb_retni( EVP_PKEY_CTX_set_rsa_padding( ctx, hb_parni( 2 ) ) );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#elif 0
+   if( hb_RSA_is( 1 ) )
+   {
+      hb_retni( 1 );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_CTX_GET_RSA_PADDING )
+{
+#if ! defined( OPENSSL_NO_RSA ) && OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+
+   if( ctx )
+   {
+      int pad_mode = 0, ret;
+
+      ret = EVP_PKEY_CTX_get_rsa_padding( ctx, &pad_mode );
+      if( ret <= 0 )
+         pad_mode = ret;
+      hb_retni( pad_mode );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#elif 0
+   if( hb_RSA_is( 1 ) )
+   {
+      hb_retni( 1 );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_CTX_SET_RSA_PSS_SALTLEN )
+{
+#if ! defined( OPENSSL_NO_RSA ) && OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+
+   if( ctx && HB_ISNUM( 2 ) )
+   {
+      hb_retni( EVP_PKEY_CTX_set_rsa_pss_saltlen( ctx, hb_parni( 2 ) ) );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_CTX_GET_RSA_PSS_SALTLEN )
+{
+#if ! defined( OPENSSL_NO_RSA ) && OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+
+   if( ctx )
+   {
+      int saltlen = 0, ret;
+
+      ret = EVP_PKEY_CTX_get_rsa_pss_saltlen( ctx, &saltlen );
+      if( ret <= 0 )
+         saltlen = ret;
+      hb_retni( saltlen );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_CTX_SET_RSA_OAEP_MD )
+{
+#if ! defined( OPENSSL_NO_RSA ) && OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+   const EVP_MD * md = hb_EVP_MD_par( 2 );
+
+   if( ctx && md )
+   {
+      hb_retni( EVP_PKEY_CTX_set_rsa_oaep_md( ctx, md ) );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#elif 0
+   if( hb_RSA_is( 1 ) )
+   {
+      hb_retni( 1 );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_CTX_GET_RSA_OAEP_MD )
+{
+#if ! defined( OPENSSL_NO_RSA ) && OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+
+   if( ctx )
+   {
+      const EVP_MD * md = NULL;
+      int ret;
+
+      ret = EVP_PKEY_CTX_get_rsa_oaep_md( ctx, &md );
+      if( ret > 0 )
+         ret = hb_EVP_MD_ptr_to_id( md );
+      hb_retni( ret );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#elif 0
+   if( hb_RSA_is( 1 ) )
+   {
+      hb_retni( 1 );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_CTX_SET_RSA_MGF1_MD )
+{
+#if ! defined( OPENSSL_NO_RSA ) && OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+   const EVP_MD * md = hb_EVP_MD_par( 2 );
+
+   if( ctx && md )
+   {
+      hb_retni( EVP_PKEY_CTX_set_rsa_mgf1_md( ctx, md ) );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#elif 0
+   if( hb_RSA_is( 1 ) )
+   {
+      hb_retni( 1 );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_CTX_GET_RSA_MGF1_MD )
+{
+#if ! defined( OPENSSL_NO_RSA ) && OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+
+   if( ctx )
+   {
+      const EVP_MD * md = NULL;
+      int ret;
+
+      ret = EVP_PKEY_CTX_get_rsa_mgf1_md( ctx, &md );
+      if( ret > 0 )
+         ret = hb_EVP_MD_ptr_to_id( md );
+      hb_retni( ret );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#elif 0
+   if( hb_RSA_is( 1 ) )
+   {
+      hb_retni( 1 );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_ENCRYPT_INIT )
+{
+#if OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+
+   if( ctx )
+   {
+      hb_retni( EVP_PKEY_encrypt_init( ctx ) );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   if( hb_RSA_is( 1 ) )
+   {
+      hb_retni( 1 );
+   }
+   else
+      hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+   #define HB_RSA_KEY_ISPRIVATE( rsa )    ( RSA_get0_d( rsa ) != NULL )
+#else
+   #define HB_RSA_KEY_ISPRIVATE( rsa )    ( ( rsa )->d != NULL )
+#endif
+
+
+HB_FUNC( EVP_PKEY_ENCRYPT )
+{
+#if OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+
+   if( ctx )
+   {
+      const unsigned char * in = ( const unsigned char * ) hb_parcx( 3 );
+      size_t inlen = ( size_t ) hb_parclen( 3 ), outlen = 0;
+      unsigned char * buffer = NULL;
+      int ret;
+
+      ret = EVP_PKEY_encrypt( ctx, NULL, &outlen, in, inlen );
+      if( ret > 0 )
+      {
+         buffer = ( unsigned char * ) hb_xgrab( outlen + 1 );
+
+         ret = EVP_PKEY_encrypt( ctx, buffer, &outlen, in, inlen );
+         if( ret > 0 )
+         {
+            if( ! hb_storclen_buffer( ( char * ) buffer, outlen, 2 ) )
+               ret = 0;
+         }
+      }
+      if( ret <= 0 )
+      {
+         if( buffer )
+            hb_xfree( buffer );
+         hb_storc( NULL, 2 );
+      }
+      hb_retni( ret );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   #ifndef OPENSSL_NO_RSA
+   if( hb_RSA_is( 1 ) )
+   {
+      RSA * rsa = hb_RSA_par( 1 );
+      const unsigned char * from = ( const unsigned char * ) hb_parcx( 3 );
+      int flen = ( int ) hb_parclen( 3 );
+      unsigned char * buffer;
+      int ret;
+
+      buffer = ( unsigned char * ) hb_xgrab( RSA_size( rsa ) + 1 );
+
+      if( HB_RSA_KEY_ISPRIVATE( rsa ) )
+         /* private key */
+         ret = RSA_private_encrypt( flen, HB_UNCONST( from ), buffer, rsa, hb_parnidef( 4, RSA_PKCS1_PADDING ) );
+      else
+         /* public key */
+         ret = RSA_public_encrypt( flen, HB_UNCONST( from ), buffer, rsa, hb_parnidef( 4, RSA_PKCS1_PADDING ) );
+
+      if( ret > 0 )
+      {
+         if( ! hb_storclen_buffer( ( char * ) buffer, ret, 2 ) )
+            ret = 0;
+      }
+      if( ret <= 0 )
+      {
+         if( buffer )
+            hb_xfree( buffer );
+         hb_storc( NULL, 2 );
+      }
+      hb_retni( ret );
+   }
+   else
+   #endif
+      hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_DECRYPT_INIT )
+{
+#if OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+
+   if( ctx )
+   {
+      hb_retni( EVP_PKEY_decrypt_init( ctx ) );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   if( hb_RSA_is( 1 ) )
+   {
+      hb_retni( 1 );
+   }
+   else
+      hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_DECRYPT )
+{
+#if OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+
+   if( ctx )
+   {
+      const unsigned char * in = ( const unsigned char * ) hb_parcx( 3 );
+      size_t inlen = ( size_t ) hb_parclen( 3 ), outlen = 0;
+      unsigned char * buffer = NULL;
+      int ret;
+
+      ret = EVP_PKEY_decrypt( ctx, NULL, &outlen, in, inlen );
+      if( ret > 0 )
+      {
+         buffer = ( unsigned char * ) hb_xgrab( outlen + 1 );
+
+         ret = EVP_PKEY_decrypt( ctx, buffer, &outlen, in, inlen );
+         if( ret > 0 )
+         {
+            if( ! hb_storclen_buffer( ( char * ) buffer, outlen, 2 ) )
+               ret = 0;
+         }
+      }
+      if( ret <= 0 )
+      {
+         if( buffer )
+            hb_xfree( buffer );
+         hb_storc( NULL, 2 );
+      }
+      hb_retni( ret );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   #ifndef OPENSSL_NO_RSA
+   if( hb_RSA_is( 1 ) )
+   {
+      RSA * rsa = hb_RSA_par( 1 );
+      const unsigned char * from = ( const unsigned char * ) hb_parcx( 3 );
+      int flen = ( int ) hb_parclen( 3 );
+      unsigned char * buffer;
+      int ret;
+
+      buffer = ( unsigned char * ) hb_xgrab( RSA_size( rsa ) + 1 );
+
+      if( HB_RSA_KEY_ISPRIVATE( rsa ) )
+         /* private key */
+         ret = RSA_private_decrypt( flen, HB_UNCONST( from ), buffer, rsa, hb_parnidef( 4, RSA_PKCS1_PADDING ) );
+      else
+         /* public key */
+         ret = RSA_public_decrypt( flen, HB_UNCONST( from ), buffer, rsa, hb_parnidef( 4, RSA_PKCS1_PADDING ) );
+
+      if( ret > 0 )
+      {
+         buffer = ( unsigned char * ) hb_xrealloc( buffer, ret + 1 );
+         if( ! hb_storclen_buffer( ( char * ) buffer, ret, 2 ) )
+            ret = 0;
+      }
+      if( ret <= 0 )
+      {
+         if( buffer )
+            hb_xfree( buffer );
+         hb_storc( NULL, 2 );
+      }
+      hb_retni( ret );
+   }
+   else
+   #endif
+      hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_CTX_SET_SIGNATURE_MD )
+{
+#if ! defined( OPENSSL_NO_RSA ) && OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+   const EVP_MD * md = hb_EVP_MD_par( 2 );
+
+   if( ctx && md )
+   {
+      hb_retni( EVP_PKEY_CTX_set_signature_md( ctx, md ) );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_CTX_GET_SIGNATURE_MD )
+{
+#if ! defined( OPENSSL_NO_RSA ) && OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+
+   if( ctx )
+   {
+      const EVP_MD * md = NULL;
+      int ret;
+
+      ret = EVP_PKEY_CTX_get_signature_md( ctx, &md );
+      if( ret > 0 )
+         ret = hb_EVP_MD_ptr_to_id( md );
+      hb_retni( ret );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+
+HB_FUNC( EVP_PKEY_SIGN_INIT )
+{
+#if OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+
+   if( ctx )
+   {
+      hb_retni( EVP_PKEY_sign_init( ctx ) );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_SIGN )
+{
+#if OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+
+   if( ctx )
+   {
+      const unsigned char * tbs = ( const unsigned char * ) hb_parcx( 3 );
+      size_t tbslen = ( size_t ) hb_parclen( 3 ), siglen = 0;
+      unsigned char * sig = NULL;
+      int ret;
+
+      ret = EVP_PKEY_sign( ctx, NULL, &siglen, tbs, tbslen );
+      if( ret > 0 )
+      {
+         sig = ( unsigned char * ) hb_xgrab( siglen + 1 );
+
+         ret = EVP_PKEY_sign( ctx, sig, &siglen, tbs, tbslen );
+         if( ret > 0 )
+         {
+            if( ! hb_storclen_buffer( ( char * ) sig, siglen, 2 ) )
+               ret = 0;
+         }
+      }
+      if( ret <= 0 )
+      {
+         if( sig )
+            hb_xfree( sig );
+         hb_storc( NULL, 2 );
+      }
+      hb_retni( ret );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_VERIFY_INIT )
+{
+#if OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+
+   if( ctx )
+   {
+      hb_retni( EVP_PKEY_verify_init( ctx ) );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+HB_FUNC( EVP_PKEY_VERIFY )
+{
+#if OPENSSL_VERSION_NUMBER >= 0x10000000L
+   EVP_PKEY_CTX * ctx = hb_EVP_PKEY_CTX_par( 1 );
+
+   if( ctx )
+   {
+      const unsigned char * sig = ( const unsigned char * ) hb_parcx( 2 );
+      size_t siglen = ( size_t ) hb_parclen( 2 );
+      const unsigned char * tbs = ( const unsigned char * ) hb_parcx( 3 );
+      size_t tbslen = ( size_t ) hb_parclen( 3 );
+
+      hb_retni( EVP_PKEY_verify( ctx, sig, siglen, tbs, tbslen ) );
+   }
+   else
+      hb_errRT_BASE( EG_ARG, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#else
+   hb_errRT_BASE( EG_NOFUNC, 2010, NULL, HB_ERR_FUNCNAME, HB_ERR_ARGS_BASEPARAMS );
+#endif
+}
+
+#if 0
+
+int EVP_PKEY_set1_RSA( EVP_PKEY * pkey, RSA * key );
+int EVP_PKEY_set1_DSA( EVP_PKEY * pkey, DSA * key );
+int EVP_PKEY_set1_DH( EVP_PKEY * pkey, DH * key );
+int EVP_PKEY_set1_EC_KEY( EVP_PKEY * pkey, EC_KEY * key );
+
+RSA *    EVP_PKEY_get1_RSA( EVP_PKEY * pkey );
+DSA *    EVP_PKEY_get1_DSA( EVP_PKEY * pkey );
+DH *     EVP_PKEY_get1_DH( EVP_PKEY * pkey );
+EC_KEY * EVP_PKEY_get1_EC_KEY( EVP_PKEY * pkey );
+
+/* These changed in 0.9.9 to something different, they weren't probably documented before. */
+int EVP_PKEY_decrypt( unsigned char * dec_key, const unsigned char * enc_key, int enc_key_len, EVP_PKEY * private_key );
+int EVP_PKEY_encrypt( unsigned char * enc_key, const unsigned char * key, int key_len, EVP_PKEY * pub_key     );
+
+/* 1.0.0 */
+int EVP_PKEY_verify_recover_init( EVP_PKEY_CTX * ctx );
+int EVP_PKEY_verify_recover( EVP_PKEY_CTX * ctx,
+                             unsigned char * rout, size_t * routlen,
+                             const unsigned char * sig, size_t siglen );
+
+#endif
